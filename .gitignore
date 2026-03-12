@@ -1,0 +1,23 @@
+# Binaries
+/dist/
+/tgcli
+*.exe
+
+# Session/auth data
+session.json
+*.db
+LOCK
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Agent files (not for repo)
+CLAUDE.md
+TASK.md
