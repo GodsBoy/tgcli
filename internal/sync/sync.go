@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"time"
 
 	"github.com/gotd/td/tg"
@@ -43,8 +44,10 @@ func (e *Engine) Run(ctx context.Context, opts Options) (*Result, error) {
 		return nil, fmt.Errorf("fetch dialogs: %w", err)
 	}
 
+	fmt.Fprintf(os.Stderr, "Found %d dialogs, syncing...\n", len(dialogs))
+
 	// Process each dialog.
-	for _, d := range dialogs {
+	for i, d := range dialogs {
 		chatID, kind, name := extractDialogInfo(d)
 		if chatID == 0 {
 			continue
@@ -60,12 +63,19 @@ func (e *Engine) Run(ctx context.Context, opts Options) (*Result, error) {
 		}
 		result.ChatsStored++
 
+		displayName := name
+		if displayName == "" {
+			displayName = fmt.Sprintf("%d", chatID)
+		}
+		fmt.Fprintf(os.Stderr, "  [%d/%d] %s (%s)...", i+1, len(dialogs), displayName, kind)
+
 		// Fetch recent messages for this dialog.
 		count, err := e.syncChatHistory(ctx, d.peer, chatID)
 		if err != nil {
-			log.Printf("sync history for %d: %v", chatID, err)
+			fmt.Fprintf(os.Stderr, " error: %v\n", err)
 			continue
 		}
+		fmt.Fprintf(os.Stderr, " %d messages\n", count)
 		result.MessagesStored += count
 	}
 
@@ -89,14 +99,55 @@ func (e *Engine) fetchDialogs(ctx context.Context) ([]dialogInfo, error) {
 	}
 
 	var infos []dialogInfo
+	var users []tg.UserClass
+	var chats []tg.ChatClass
 
 	switch r := result.(type) {
 	case *tg.MessagesDialogs:
 		infos = extractFromDialogs(r.Dialogs, r.Chats, r.Users)
+		users = r.Users
+		chats = r.Chats
 	case *tg.MessagesDialogsSlice:
 		infos = extractFromDialogs(r.Dialogs, r.Chats, r.Users)
+		users = r.Users
+		chats = r.Chats
 	default:
 		return nil, fmt.Errorf("unexpected dialogs type: %T", result)
+	}
+
+	// Populate contacts from dialog users.
+	for _, u := range users {
+		user, ok := u.(*tg.User)
+		if !ok || user.Bot || user.Self {
+			continue
+		}
+		_ = e.db.UpsertContact(store.Contact{
+			UserID:    user.ID,
+			FirstName: user.FirstName,
+			LastName:  user.LastName,
+			Username:  user.Username,
+			Phone:     user.Phone,
+		})
+	}
+
+	// Populate groups from dialog chats.
+	for _, c := range chats {
+		switch chat := c.(type) {
+		case *tg.Chat:
+			_ = e.db.UpsertGroup(store.Group{
+				ChatID:      chat.ID,
+				Title:       chat.Title,
+				MemberCount: chat.ParticipantsCount,
+			})
+		case *tg.Channel:
+			if !chat.Broadcast {
+				_ = e.db.UpsertGroup(store.Group{
+					ChatID:      chat.ID,
+					Title:       chat.Title,
+					MemberCount: chat.ParticipantsCount,
+				})
+			}
+		}
 	}
 
 	return infos, nil

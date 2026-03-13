@@ -1,35 +1,93 @@
-# tgcli
+# 📡 tgcli — Telegram CLI: sync, search, send.
 
-A Telegram CLI built in Go using [gotd/td](https://github.com/gotd/td) (MTProto).
+Telegram CLI built on top of [gotd/td](https://github.com/gotd/td) (MTProto), focused on:
 
-tgcli authenticates as a real user account (not Bot API), syncs messages to a local SQLite database with full-text search (FTS5), and provides commands for searching, listing, and sending messages.
+- **Local message sync** with continuous capture
+- **Fast offline search** via SQLite FTS5
+- **Sending messages** and files
+- **Contact + group management**
 
-## Prerequisites
+This is a third-party tool that uses the Telegram MTProto protocol via `gotd/td` and is not affiliated with Telegram.
+
+## Status
+
+Core implementation is in place. See `docs/spec.md` for the full design notes.
+
+## Install / Build
+
+### Prerequisites
 
 - Go 1.21+
 - GCC / build-essential (CGO required for SQLite)
-- A Telegram account
 - App credentials from [my.telegram.org](https://my.telegram.org)
 
-## Install
+### Build locally
 
 ```bash
-# From source
 git clone https://github.com/GodsBoy/tgcli.git
 cd tgcli
-make install
-
-# Or directly
-CGO_ENABLED=1 go install -tags sqlite_fts5 ./cmd/tgcli@latest
+make build
 ```
 
-## Quick Start
+Run:
 
-### 1. Get API Credentials
+```bash
+./dist/tgcli --help
+```
 
-Go to [my.telegram.org](https://my.telegram.org), log in, and create an application to get your `api_id` and `api_hash`.
+### Install to $GOPATH/bin
 
-### 2. Configure
+```bash
+make install
+```
+
+## Quick start
+
+Default store directory is `~/.tgcli` (override with `--store DIR`).
+
+```bash
+# 1) Get API credentials from https://my.telegram.org
+#    Create config:
+cat > ~/.tgcli/config.json << EOF
+{
+  "app_id": 12345,
+  "app_hash": "your_api_hash_here",
+  "phone": "+1234567890"
+}
+EOF
+
+# 2) Authenticate (phone + OTP + optional 2FA)
+tgcli auth
+
+# 3) Sync message history
+tgcli sync
+
+# 4) Keep syncing new messages (Ctrl+C to stop)
+tgcli sync --follow
+
+# 5) Diagnostics
+tgcli doctor
+
+# Search messages (FTS5 full-text search)
+tgcli messages search "meeting"
+
+# List recent messages in a chat
+tgcli messages list --chat 12345 --limit 20
+
+# Send a message
+tgcli send text --to 12345 --message "hello"
+
+# Send a file
+tgcli send file --to 12345 --file ./photo.jpg --caption "check this out"
+
+# List chats, contacts, groups
+tgcli chats list
+tgcli contacts list
+tgcli groups list
+tgcli groups info --chat 12345
+```
+
+## Configuration
 
 Set environment variables:
 
@@ -39,7 +97,7 @@ export TGCLI_APP_HASH=abcdef1234567890
 export TGCLI_PHONE=+1234567890
 ```
 
-Or create a config file at `~/.tgcli/config.json`:
+Or create `~/.tgcli/config.json`:
 
 ```json
 {
@@ -49,36 +107,7 @@ Or create a config file at `~/.tgcli/config.json`:
 }
 ```
 
-### 3. Authenticate
-
-```bash
-tgcli auth
-# Enter OTP code when prompted
-# Enter 2FA password if enabled
-```
-
-### 4. Sync Messages
-
-```bash
-# One-time sync
-tgcli sync
-
-# Continuous sync (stays running)
-tgcli sync --follow
-```
-
-### 5. Search & Browse
-
-```bash
-# Search messages
-tgcli messages search "hello world"
-
-# List recent messages in a chat
-tgcli messages list --chat 12345
-
-# Show a specific message
-tgcli messages show --chat 12345 --id 42
-```
+Config file values are used as defaults; environment variables take precedence.
 
 ## Commands
 
@@ -86,7 +115,7 @@ tgcli messages show --chat 12345 --id 42
 
 ```bash
 tgcli auth                    # Authenticate (phone + OTP + optional 2FA)
-tgcli auth status             # Check authentication status
+tgcli auth status             # Show authentication status
 tgcli auth logout             # Invalidate session
 ```
 
@@ -97,6 +126,8 @@ tgcli sync                    # Sync message history to SQLite
 tgcli sync --follow           # Continuous sync (Ctrl+C to stop)
 ```
 
+`tgcli sync` never prompts for authentication — it errors if not logged in. Use `tgcli auth` first.
+
 ### Messages
 
 ```bash
@@ -104,6 +135,8 @@ tgcli messages list --chat <id> [--limit N] [--after TIME] [--before TIME]
 tgcli messages search "query" [--chat <id>] [--limit N]
 tgcli messages show --chat <id> --id <msg_id>
 ```
+
+Search uses SQLite FTS5 for fast full-text matching with result highlighting.
 
 ### Send
 
@@ -124,20 +157,20 @@ tgcli groups info --chat <id>
 ### Diagnostics
 
 ```bash
-tgcli doctor                  # Check configuration and connectivity
+tgcli doctor                  # Check configuration, session, database, FTS5
 ```
 
 ## Global Flags
 
-| Flag | Description |
-|------|-------------|
-| `--store DIR` | Storage directory (default: `~/.tgcli`) |
-| `--json` | Output as JSON (structured envelope) |
-| `--timeout DURATION` | Operation timeout (default: 5m) |
+```
+--store DIR          Storage directory (default: ~/.tgcli)
+--json               Output as JSON (structured envelope)
+--timeout DURATION   Operation timeout (default: 5m)
+```
 
 ## JSON Output
 
-When `--json` is passed, all output is wrapped in an envelope:
+All commands support `--json` for machine-readable output:
 
 ```json
 {
@@ -155,7 +188,9 @@ On error:
 }
 ```
 
-## Storage Layout
+## Storage
+
+Defaults to `~/.tgcli` (override with `--store DIR`).
 
 ```
 ~/.tgcli/
@@ -165,16 +200,28 @@ On error:
 └── LOCK            # Instance lock file
 ```
 
+Store permissions are set to `0700` (directory) and `0600` (files) for security.
+
+## High-level UX
+
+- `tgcli auth`: interactive login (phone + OTP + 2FA), then ready to sync.
+- `tgcli sync`: non-interactive sync (never prompts for auth; errors if not authenticated).
+- Output is human-readable by default; pass `--json` for scripting.
+- Progress is written to stderr; primary output goes to stdout.
+- Single-instance safety: store locking prevents concurrent access.
+
 ## Architecture
 
-- `cmd/tgcli/` — Cobra CLI commands
-- `internal/auth/` — MTProto phone + OTP + 2FA auth flow
-- `internal/client/` — gotd/td wrapper
-- `internal/sync/` — Message sync engine (bootstrap + follow)
-- `internal/store/` — SQLite storage layer with FTS5
-- `internal/format/` — Output formatting (JSON, plain text)
-- `internal/lock/` — Single-instance safety (flock)
-- `internal/config/` — Configuration loading
+```
+cmd/tgcli/           Cobra CLI commands
+internal/auth/       MTProto phone + OTP + 2FA auth flow
+internal/client/     gotd/td wrapper (connect, auth, API calls)
+internal/sync/       Message sync engine (bootstrap + follow)
+internal/store/      SQLite storage layer with FTS5 full-text search
+internal/format/     Output formatting (JSON, plain text)
+internal/lock/       Single-instance safety (flock)
+internal/config/     Configuration loading (file + env)
+```
 
 ## Development
 
@@ -182,10 +229,14 @@ On error:
 make build          # Build binary to dist/
 make test           # Run tests with race detector
 make vet            # Run go vet
-make lint           # Run golangci-lint
-make install        # Install to $GOPATH/bin
+make lint           # Run golangci-lint (requires golangci-lint)
+make clean          # Remove build artifacts
 ```
+
+## Prior Art / Credit
+
+This project is inspired by the excellent [wacli](https://github.com/steipete/wacli) by Peter Steinberger.
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).

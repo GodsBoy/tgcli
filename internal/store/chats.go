@@ -3,13 +3,14 @@ package store
 import "time"
 
 // UpsertChat inserts or updates a chat record.
+// Empty kind/name fields are preserved (not overwritten) on conflict.
 func (d *DB) UpsertChat(c Chat) error {
 	_, err := d.sql.Exec(`
 		INSERT INTO chats (chat_id, kind, name, last_message_ts)
 		VALUES (?, ?, ?, ?)
 		ON CONFLICT(chat_id) DO UPDATE SET
-			kind            = excluded.kind,
-			name            = excluded.name,
+			kind            = CASE WHEN excluded.kind = '' THEN chats.kind ELSE excluded.kind END,
+			name            = CASE WHEN excluded.name = '' THEN chats.name ELSE excluded.name END,
 			last_message_ts = CASE
 				WHEN excluded.last_message_ts > chats.last_message_ts THEN excluded.last_message_ts
 				ELSE chats.last_message_ts
