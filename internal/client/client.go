@@ -23,6 +23,7 @@ type Options struct {
 type Client struct {
 	opts   Options
 	client *telegram.Client
+	waiter *floodwait.Waiter
 	api    *tg.Client
 }
 
@@ -45,15 +46,18 @@ func New(opts Options) (*Client, error) {
 	return &Client{
 		opts:   opts,
 		client: client,
+		waiter: waiter,
 	}, nil
 }
 
 // Run executes fn within an authenticated client session.
-// The client connects, runs fn, and disconnects when fn returns.
+// The waiter middleware is started first, then the client connects and runs fn.
 func (c *Client) Run(ctx context.Context, fn func(ctx context.Context, client *tg.Client) error) error {
-	return c.client.Run(ctx, func(ctx context.Context) error {
-		c.api = c.client.API()
-		return fn(ctx, c.api)
+	return c.waiter.Run(ctx, func(ctx context.Context) error {
+		return c.client.Run(ctx, func(ctx context.Context) error {
+			c.api = c.client.API()
+			return fn(ctx, c.api)
+		})
 	})
 }
 
