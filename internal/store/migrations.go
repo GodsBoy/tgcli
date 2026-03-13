@@ -123,7 +123,7 @@ func migrateV2FTS(db *sql.DB) error {
 	}
 	for _, s := range ftsStmts {
 		if _, err := db.Exec(s); err != nil {
-			// FTS5 not available — skip silently, search will fall back to LIKE.
+			// FTS5 not available - skip silently, search will fall back to LIKE.
 			return nil
 		}
 	}

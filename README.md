@@ -1,4 +1,4 @@
-# 📡 tgcli — Telegram CLI: sync, search, send.
+# 📡 tgcli - Telegram CLI: sync, search, send.
 
 Telegram CLI built on top of [gotd/td](https://github.com/gotd/td) (MTProto), focused on:
 
@@ -126,7 +126,7 @@ tgcli sync                    # Sync message history to SQLite
 tgcli sync --follow           # Continuous sync (Ctrl+C to stop)
 ```
 
-`tgcli sync` never prompts for authentication — it errors if not logged in. Use `tgcli auth` first.
+`tgcli sync` never prompts for authentication - it errors if not logged in. Use `tgcli auth` first.
 
 ### Messages
 
@@ -239,4 +239,4 @@ This project is inspired by the excellent [wacli](https://github.com/steipete/wa
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT - see [LICENSE](LICENSE).

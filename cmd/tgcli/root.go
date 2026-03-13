@@ -27,7 +27,7 @@ func execute(args []string) error {
 
 	rootCmd := &cobra.Command{
 		Use:     "tgcli",
-		Short:   "Telegram CLI — sync, search, and send messages via MTProto",
+		Short:   "Telegram CLI - sync, search, and send messages via MTProto",
 		Version: version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
